@@ -1,56 +1,133 @@
 import streamlit as st
-from openai import OpenAI
+import random
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+# --- 커스텀 CSS (폰트 크기 2배 확대) ---
+st.markdown("""
+    <style>
+    html, body, [class*="css"]  {
+        font-size: 1.7em !important;
+    }
+    .stTextInput > div > div > input {
+        font-size: 1.5em !important;
+    }
+    .stButton button {
+        font-size: 1.2em !important;
+        padding: 0.5em 1.5em;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+# 상태 초기화
+if "chat_log" not in st.session_state:
+    st.session_state.chat_log = []
+if "current_number" not in st.session_state:
+    st.session_state.current_number = 0
+if "game_over" not in st.session_state:
+    st.session_state.game_over = False
+if "bot_first" not in st.session_state:
+    st.session_state.bot_first = None
+if "awaiting_user_input" not in st.session_state:
+    st.session_state.awaiting_user_input = False
+if "last_user_input" not in st.session_state:
+    st.session_state.last_user_input = None
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+st.title("🎲 베스킨라빈스31 챗봇 게임")
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+def display_chat():
+    for role, text in st.session_state.chat_log:
+        prefix = "👤 너:" if role == "user" else "🤖 챗봇:"
+        st.markdown(f"{prefix} {text}")
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+def bot_turn():
+    cur = st.session_state.current_number
+    if st.session_state.bot_first:
+        next_target = ((cur - 2) // 4 + 1) * 4 + 2
+        to_say = list(range(cur + 1, min(next_target + 1, 32)))
+    else:
+        count = random.randint(1, 3)
+        to_say = list(range(cur + 1, min(cur + count + 1, 32)))
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+    if to_say:
+        bot_speak = " ".join(map(str, to_say))
+        st.session_state.chat_log.append(("bot", bot_speak))
+        st.session_state.current_number = to_say[-1]
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    if st.session_state.current_number >= 31:
+        st.session_state.chat_log.append(("bot", "앗! 내가 31을 말해버렸네... 네가 이겼어!"))
+        st.session_state.game_over = True
+    else:
+        st.session_state.awaiting_user_input = True
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+def start_game():
+    if st.session_state.bot_first:
+        st.session_state.chat_log.append(("bot", "그럼 내가 먼저 시작할게!"))
+        st.session_state.chat_log.append(("bot", "1 2"))
+        st.session_state.current_number = 2
+    else:
+        st.session_state.chat_log.append(("bot", "네가 먼저 해!"))
+    st.session_state.awaiting_user_input = True
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+# 선공 선택
+if st.session_state.bot_first is None:
+    choice = st.radio("누가 먼저 시작할까요?", ("챗봇", "나"))
+    if st.button("게임 시작"):
+        st.session_state.bot_first = (choice == "챗봇")
+        start_game()
+
+# 유저가 입력한 값이 있다면 챗봇 차례 실행
+if st.session_state.last_user_input:
+    user_numbers = st.session_state.last_user_input
+    st.session_state.chat_log.append(("user", " ".join(map(str, user_numbers))))
+    st.session_state.current_number = user_numbers[-1]
+    st.session_state.last_user_input = None
+
+    if st.session_state.current_number >= 31:
+        st.session_state.chat_log.append(("bot", "내가 이겼다! 사실 이 게임에는 필승법이 있어. 한번 물어보고 와봐!"))
+        st.session_state.game_over = True
+    else:
+        st.session_state.awaiting_user_input = False
+        bot_turn()
+
+    st.rerun()
+
+# 채팅 출력
+display_chat()
+
+# ✅ 자동 스크롤: 맨 아래로 이동
+st.markdown("""
+    <div id="bottom"></div>
+    <script>
+        var element = document.getElementById("bottom");
+        if (element) {
+            element.scrollIntoView({behavior: "smooth"});
+        }
+    </script>
+""", unsafe_allow_html=True)
+
+# 유저 입력 폼
+if not st.session_state.game_over and st.session_state.awaiting_user_input:
+    with st.form("user_input_form", clear_on_submit=True):
+        user_input = st.text_input("숫자를 1개~3개 입력하세요 (띄어쓰기 구분)")
+        submitted = st.form_submit_button("제출")
+
+    if submitted:
+        try:
+            numbers = list(map(int, user_input.strip().split()))
+            expected = st.session_state.current_number + 1
+
+            if not (1 <= len(numbers) <= 3):
+                st.error("❗ 1개에서 3개의 숫자를 입력하세요.")
+            elif numbers[0] != expected or any(numbers[i] != numbers[i - 1] + 1 for i in range(1, len(numbers))):
+                st.error(f"❗ 숫자는 {expected}부터 연속되어야 합니다.")
+            else:
+                st.session_state.last_user_input = numbers
+                st.rerun()
+        except ValueError:
+            st.error("❗ 숫자를 정확하게 입력해주세요.")
+
+# 게임 끝났을 때 다시 시작 버튼
+if st.session_state.game_over:
+    if st.button("다시 시작"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
