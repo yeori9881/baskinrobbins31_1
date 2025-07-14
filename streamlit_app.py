@@ -31,7 +31,7 @@ if "awaiting_user_input" not in st.session_state:
 if "last_user_input" not in st.session_state:
     st.session_state.last_user_input = None
 
-st.title("🎲 베스킨라빈스31 챗봇 게임")
+st.title("챗봇과 하는 베스킨라빈스31 게임")
 
 def display_chat():
     for role, text in st.session_state.chat_log:
@@ -40,20 +40,31 @@ def display_chat():
 
 def bot_turn():
     cur = st.session_state.current_number
+
     if st.session_state.bot_first:
+        # 챗봇이 선공일 경우: 필승 루트 (4n+2)
         next_target = ((cur - 2) // 4 + 1) * 4 + 2
         to_say = list(range(cur + 1, min(next_target + 1, 32)))
     else:
-        count = random.randint(1, 3)
-        to_say = list(range(cur + 1, min(cur + count + 1, 32)))
+        # 챗봇이 후공일 경우: 기회가 되면 필승 루트 진입
+        for count in range(1, 4):
+            target = cur + count
+            if target % 4 == 2:
+                to_say = list(range(cur + 1, target + 1))
+                break
+        else:
+            count = random.randint(1, 3)
+            to_say = list(range(cur + 1, min(cur + count + 1, 32)))
 
+    # 챗봇 말하기
     if to_say:
         bot_speak = " ".join(map(str, to_say))
         st.session_state.chat_log.append(("bot", bot_speak))
         st.session_state.current_number = to_say[-1]
 
+    # 게임 종료 여부 확인
     if st.session_state.current_number >= 31:
-        st.session_state.chat_log.append(("bot", "앗! 내가 31을 말해버렸네... 네가 이겼어!"))
+        st.session_state.chat_log.append(("bot", "앗! 내가 31을 말해버렸네... 네가 이겼어! 이 화면을 보여주고 상품을 달라고 해!"))
         st.session_state.game_over = True
     else:
         st.session_state.awaiting_user_input = True
@@ -82,7 +93,7 @@ if st.session_state.last_user_input:
     st.session_state.last_user_input = None
 
     if st.session_state.current_number >= 31:
-        st.session_state.chat_log.append(("bot", "내가 이겼다! 사실 이 게임에는 필승법이 있어. 한번 물어보고 와봐!"))
+        st.session_state.chat_log.append(("bot", "내가 이겼다! 사실 이 게임에는 필승법이 있어. 한번 물어보고 다시 도전해보자!"))
         st.session_state.game_over = True
     else:
         st.session_state.awaiting_user_input = False
